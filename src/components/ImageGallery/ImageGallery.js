@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import s from './ImageGallery.module.css';
 import { fetchQuery } from '../../services/searchQueryAPI';
@@ -7,120 +7,98 @@ import ImageGalleryItem from 'components/ImageGalleryItem';
 import 'react-loader-spinner/dist/loader/css/react-spinner-loader.css';
 import { ThreeDots } from 'react-loader-spinner';
 
-class ImageGallery extends Component {
-  state = {
-    data: [],
-    // totalHits: 0,
-    isNextPage: false,
-    error: null,
-    status: 'idle',
-  };
-  static propTypes = {
-    searchQuery: PropTypes.string.isRequired,
-  };
-  componentDidUpdate(prevProps, prevState) {
-    const { searchQuery, page } = this.props;
-    const prevSearchQuery = prevProps.searchQuery;
-    const nextSearchQuery = searchQuery;
-    const prevPage = prevProps.page;
+const Status = {
+  IDLE: 'idle',
+  RESOLVED: 'resolved',
+  PENDING: 'pending',
+  REJECTED: 'rejected',
+};
 
-    if (prevSearchQuery !== nextSearchQuery) {
-      this.setState({ status: 'pending', data: [] });
-      this.getNewData(nextSearchQuery, page);
+function ImageGallery({ searchQuery, page, onGalleryItemClick, children }) {
+  const [data, setData] = useState([]);
+  const [totalHits, setTotalHits] = useState(0);
+  const [status, setStatus] = useState(Status.IDLE);
+  const [error, setError] = useState(null);
+  const [isNextPage, setIsNextPage] = useState(false);
+
+  useEffect(() => {
+    if (searchQuery === '') {
       return;
     }
-    if (prevPage !== page) {
-      this.setState({ status: 'pending' });
-      this.getNewData(nextSearchQuery, page);
-    }
-  }
-
-  getNewData(nextSearchQuery, page) {
-    fetchQuery(nextSearchQuery, page)
+    setStatus(Status.PENDING);
+    fetchQuery(searchQuery, page)
       .then(searchedData => {
         const newData = searchedData.hits;
         const newTotalHits = searchedData.totalHits;
-        this.hasNextPage(newTotalHits);
+
         if (newData.length === 0) {
-          this.setState({ status: 'rejected' });
+          setStatus(Status.REJECTED);
           return Promise.reject(
-            new Error(`Nothing found on the topic ${nextSearchQuery}`)
+            new Error(`Nothing found on the topic ${searchQuery}`)
           );
         }
-        this.changeState(newData, newTotalHits);
-      })
-      .catch(error => this.setState({ error }));
-  }
 
-  changeState(newData) {
-    this.setState(prevState => ({
-      data: [...prevState.data, ...newData],
-      status: 'resolved',
-    }));
-  }
-  hasNextPage(newTotalHits) {
-    const { page } = this.props;
+        setData(prevData => [...prevData, ...newData]);
+        setTotalHits(newTotalHits);
+        setStatus(Status.RESOLVED);
+      })
+
+      .catch(error => setError(error));
+  }, [page, searchQuery]);
+
+  useEffect(() => {
+    setData([]);
+    return;
+  }, [searchQuery]);
+
+  useEffect(() => {
     const limit = 12;
-    const totalPage = Math.ceil(newTotalHits / limit);
+    const totalPage = Math.ceil(totalHits / limit);
 
     if (totalPage > page) {
-      this.setState({ isNextPage: true });
+      setIsNextPage(true);
     } else {
-      this.setState({ isNextPage: false });
+      setIsNextPage(false);
     }
-  }
+  }, [totalHits, page]);
 
-  render() {
-    const { data, error, status, isNextPage } = this.state;
-
-    return (
-      <>
-        {status === 'pending' && (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            <ThreeDots
-              height="100"
-              width="100"
-              color="red"
-              ariaLabel="loading"
+  return (
+    <>
+      {status === Status.PENDING && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <ThreeDots height="100" width="100" color="red" ariaLabel="loading" />
+        </div>
+      )}
+      <ul className={s.ImageGallery}>
+        {data.map(galleryItem => {
+          return (
+            <ImageGalleryItem
+              galleryItem={galleryItem}
+              onGalleryItemClick={onGalleryItemClick}
+              key={galleryItem.id}
             />
-          </div>
-        )}
-        <ul className={s.ImageGallery}>
-          {data.map(galleryItem => {
-            return (
-              <ImageGalleryItem
-                galleryItem={galleryItem}
-                onGalleryItemClick={this.props.onGalleryItemClick}
-                key={galleryItem.id}
-              />
-            );
-          })}
-        </ul>
-        {status === 'resolved' && isNextPage === true && (
-          <div className={s.ButtonContainer}>{this.props.children}</div>
-        )}
+          );
+        })}
+      </ul>
 
-        {status === 'rejected' && <h1>{error.message}</h1>}
-      </>
-    );
-  }
+      {status === Status.RESOLVED && isNextPage && (
+        <div className={s.ButtonContainer}>{children}</div>
+      )}
+
+      {status === Status.REJECTED && <h1>{error.message}</h1>}
+    </>
+  );
 }
 
-export default ImageGallery;
+ImageGallery.prototype = {
+  searchQuery: PropTypes.string.isRequired,
+  page: PropTypes.number.isRequired,
+};
 
-// function hasNextPage(totalHits, page) {
-//   const limit = 40;
-//   const totalPage = Math.ceil(totalHits / limit);
-//   console.log('totalPage', totalPage, page);
-//   if (totalPage > page) {
-//     refs.loadMoreBtn.classList.remove('is-hidden');
-//   } else {
-//     refs.loadMoreBtn.classList.add('is-hidden');
-//   }
-// }
+export default ImageGallery;
